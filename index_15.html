@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bingo en vivo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --navy:#152449;
+    --navy-deep:#0d1830;
+    --paper:#FBF4E4;
+    --paper-dim:#EFE5CC;
+    --gold:#F0B23A;
+    --red:#E1502E;
+    --green:#3E8E5A;
+    --ink:#152449;
+    --muted:#6E7B9C;
+    --line:rgba(21,36,73,0.14);
+    --radius:16px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(circle at 15% -10%, #24356b 0%, transparent 55%),
+      radial-gradient(circle at 100% 0%, #1c2c58 0%, transparent 50%),
+      var(--navy);
+    color:var(--paper);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    padding:20px 14px 60px;
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:0.01ms !important; transition-duration:0.01ms !important;}
+  }
+  .wrap{max-width:640px;margin:0 auto;}
+
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand-ball{
+    width:40px;height:40px;border-radius:50%;
+    background:radial-gradient(circle at 32% 28%, #fff 0%, var(--gold) 38%, #c9860f 100%);
+    box-shadow:0 3px 0 rgba(0,0,0,0.25);
+    flex-shrink:0;
+  }
+  h1{font-family:'Baloo 2',sans-serif;font-weight:800;font-size:1.5rem;margin:0;letter-spacing:0.5px;}
+  .subtitle{font-size:0.78rem;color:#9FB0DA;margin-top:2px;}
+  .header-btns{display:flex;gap:8px;flex-wrap:wrap;}
+  .host-toggle{
+    background:transparent;border:1px solid rgba(255,255,255,0.25);color:#C9D4EE;
+    padding:8px 12px;border-radius:999px;font-size:0.78rem;font-weight:600;cursor:pointer;
+    font-family:'Inter',sans-serif;
+  }
+  .host-toggle:hover{border-color:var(--gold);color:var(--gold);}
+  .host-toggle:focus-visible, button:focus-visible, input:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
+
+  .status-card{
+    background:linear-gradient(180deg, #1d2f5e, #16264c);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:var(--radius);
+    padding:18px;
+    margin-bottom:16px;
+    display:flex;align-items:center;gap:18px;
+  }
+  .current-ball{
+    width:78px;height:78px;border-radius:50%;flex-shrink:0;
+    background:radial-gradient(circle at 32% 26%, #fff 0%, var(--red) 42%, #9c2e18 100%);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'JetBrains Mono',monospace;font-weight:700;font-size:1.6rem;color:#fff;
+    box-shadow:0 4px 0 rgba(0,0,0,0.3);
+  }
+  .current-ball.empty{background:radial-gradient(circle at 32% 26%, #4a5a86 0%, #263764 60%, #1a2748 100%);}
+  .current-ball .letter{font-size:0.85rem;display:block;text-align:center;opacity:0.85;}
+  .status-info{flex:1;min-width:0;}
+  .status-line{font-size:0.95rem;font-weight:600;margin-bottom:6px;}
+  .status-sub{font-size:0.78rem;color:#9FB0DA;}
+  .history{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+  .history .chip{
+    width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.08);
+    display:flex;align-items:center;justify-content:center;font-size:0.72rem;font-weight:700;
+    font-family:'JetBrains Mono',monospace;color:#C9D4EE;border:1px solid rgba(255,255,255,0.12);
+  }
+
+  .gate{
+    background:var(--paper);color:var(--ink);border-radius:var(--radius);padding:26px 22px;
+    text-align:center;
+  }
+  .gate h2{font-family:'Baloo 2',sans-serif;font-size:1.3rem;margin:0 0 6px;}
+  .gate p{font-size:0.88rem;color:var(--muted);margin:0 0 16px;}
+  .gate input{
+    width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid var(--line);
+    font-size:1rem;font-family:'Inter',sans-serif;margin-bottom:12px;
+  }
+  .gate button, .primary-btn{
+    background:var(--red);color:#fff;border:none;padding:12px 18px;border-radius:10px;
+    font-weight:700;font-size:0.95rem;cursor:pointer;font-family:'Inter',sans-serif;width:100%;
+  }
+  .gate button:hover, .primary-btn:hover{background:#c94324;}
+
+  .card-panel{
+    background:var(--paper);color:var(--ink);border-radius:var(--radius);
+    padding:18px;margin-bottom:16px;
+  }
+  .card-panel-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;}
+  .card-panel-head h2{font-family:'Baloo 2',sans-serif;font-size:1.15rem;margin:0;}
+  .player-name{font-size:0.8rem;color:var(--muted);}
+  table.carton{width:100%;border-collapse:separate;border-spacing:6px;}
+  table.carton th{
+    font-family:'Baloo 2',sans-serif;font-size:1.2rem;color:var(--red);padding-bottom:4px;
+  }
+  table.carton td{
+    aspect-ratio:1/1;text-align:center;vertical-align:middle;
+    background:#fff;border:1.5px solid var(--line);border-radius:10px;
+    font-family:'JetBrains Mono',monospace;font-weight:700;font-size:clamp(0.85rem,4vw,1.15rem);
+    position:relative;
+  }
+  table.carton td.free{background:var(--paper-dim);color:var(--muted);font-size:0.7rem;font-family:'Inter',sans-serif;font-weight:700;}
+  table.carton td.marked{background:var(--green);color:#fff;border-color:var(--green);}
+  table.carton td.marked.free{background:var(--green);color:#fff;}
+
+  .win-banner{
+    margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--gold);color:#3a2600;
+    font-weight:700;text-align:center;font-family:'Baloo 2',sans-serif;font-size:1rem;display:none;
+  }
+  .win-banner.show{display:block;}
+
+  .winners-panel{
+    background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);
+    border-radius:var(--radius);padding:16px 18px;margin-bottom:16px;
+  }
+  .winners-panel h3{font-family:'Baloo 2',sans-serif;font-size:1rem;margin:0 0 8px;color:var(--gold);}
+  .winners-panel .empty{font-size:0.82rem;color:#9FB0DA;}
+  .winner-row{display:flex;justify-content:space-between;font-size:0.85rem;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.08);}
+  .winner-row:last-child{border-bottom:none;}
+  .winner-tag{font-size:0.7rem;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(240,178,58,0.2);color:var(--gold);}
+
+  .host-drawer{
+    background:var(--paper);color:var(--ink);border-radius:var(--radius);
+    padding:18px;margin-bottom:16px;display:none;
+  }
+  .host-drawer.open{display:block;}
+  .host-drawer h3{font-family:'Baloo 2',sans-serif;margin:0 0 10px;font-size:1.05rem;}
+  .host-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+  .host-row button{
+    flex:1;min-width:110px;padding:10px 12px;border-radius:9px;border:1.5px solid var(--line);
+    background:#fff;font-weight:700;font-size:0.85rem;cursor:pointer;font-family:'Inter',sans-serif;
+  }
+  .host-row button.go{background:var(--green);color:#fff;border-color:var(--green);}
+  .host-row button.stop{background:var(--red);color:#fff;border-color:var(--red);}
+  .host-row button.reset{background:transparent;color:var(--red);border-color:var(--red);}
+  select.interval{
+    padding:10px;border-radius:9px;border:1.5px solid var(--line);font-family:'Inter',sans-serif;font-size:0.85rem;
+  }
+  .host-note{font-size:0.75rem;color:var(--muted);margin-top:8px;line-height:1.5;}
+
+  footer{text-align:center;font-size:0.72rem;color:#7387B5;margin-top:8px;}
+
+  .error-banner{
+    background:var(--red);color:#fff;border-radius:10px;padding:12px 14px;margin-bottom:14px;
+    font-size:0.85rem;line-height:1.5;font-weight:600;
+  }
+
+  .setup-panel{
+    background:var(--paper);color:var(--ink);border-radius:var(--radius);padding:22px;margin-bottom:16px;
+  }
+  .setup-panel h2{font-family:'Baloo 2',sans-serif;margin:0 0 6px;font-size:1.2rem;}
+  .setup-panel p{font-size:0.85rem;color:var(--muted);margin:0 0 12px;line-height:1.5;}
+  .setup-panel label{display:block;font-size:0.78rem;font-weight:700;margin-bottom:4px;margin-top:10px;}
+  .setup-panel input{
+    width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--line);
+    font-family:'JetBrains Mono',monospace;font-size:0.82rem;
+  }
+  .setup-panel .save-btn{margin-top:16px;}
+
+  .bingo-alert{
+    background:linear-gradient(135deg, var(--gold), #F4C766);
+    color:#3a2600;border-radius:var(--radius);padding:18px;margin-bottom:16px;
+    text-align:center;font-family:'Baloo 2',sans-serif;
+    box-shadow:0 6px 20px rgba(240,178,58,0.35);
+  }
+  .bingo-alert #bingoAlertText{font-size:1.05rem;margin-bottom:10px;}
+  .bingo-alert button{
+    background:#3a2600;color:#fff;border:none;padding:9px 16px;border-radius:8px;
+    font-weight:700;font-size:0.82rem;cursor:pointer;font-family:'Inter',sans-serif;
+  }
+
+  .roster-row{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:8px 0;border-bottom:1px solid var(--line);font-size:0.85rem;
+  }
+  .roster-row:last-child{border-bottom:none;}
+  .kick-btn{
+    background:var(--red);color:#fff;border:none;padding:6px 10px;border-radius:7px;
+    font-size:0.72rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="brand-ball"></div>
+      <div>
+        <h1>Bingo en vivo</h1>
+        <div class="subtitle">75 bolas · B I N G O</div>
+      </div>
+    </div>
+    <div class="header-btns">
+      <button class="host-toggle" id="voiceToggleBtn">🔊 Voz activada</button>
+      <button class="host-toggle" id="voiceTestBtn">Probar voz</button>
+      <button class="host-toggle" id="hostToggleBtn">Panel del anfitrión</button>
+      <button class="host-toggle" id="setupToggleBtn">⚙ Configuración</button>
+  <button class="host-toggle" id="voiceTestLocalBtn">Probar voz local</button>
+    </div>
+  </header>
+
+  <div class="error-banner" id="errorBanner" style="display:none;"></div>
+
+  <!-- Firebase setup panel: fill this in ONCE before sharing the link -->
+  <div class="setup-panel" id="setupPanel" style="display:none;">
+    <h2>Conectar la base de datos (una sola vez)</h2>
+    <p>Este juego necesita una base de datos gratuita de Firebase para que los 100 celulares vean la misma partida en tiempo real. Crea un proyecto gratis en <strong>firebase.google.com</strong>, activa "Realtime Database" y pega aquí los 5 datos que te da la consola (Configuración del proyecto → tus apps → SDK de Firebase). Solo lo tienes que hacer una vez: se guarda en este navegador y queda incrustado cuando subas el archivo a tu hosting.</p>
+    <label for="cfgApiKey">apiKey</label>
+    <input id="cfgApiKey" type="text" placeholder="AIzaSy...">
+    <label for="cfgAuthDomain">authDomain</label>
+    <input id="cfgAuthDomain" type="text" placeholder="tuproyecto.firebaseapp.com">
+    <label for="cfgDbUrl">databaseURL</label>
+    <input id="cfgDbUrl" type="text" placeholder="https://tuproyecto-default-rtdb.firebaseio.com">
+    <label for="cfgProjectId">projectId</label>
+    <input id="cfgProjectId" type="text" placeholder="tuproyecto">
+    <label for="cfgAppId">appId</label>
+    <input id="cfgAppId" type="text" placeholder="1:1234567890:web:abcdef">
+    <button class="primary-btn save-btn" id="saveConfigBtn">Guardar y conectar</button>
+  </div>
+
+  <!-- access code gate -->
+  <div class="gate" id="accessGate" style="display:none;">
+    <h2>Código de acceso</h2>
+    <p>Pídele el código al anfitrión de esta partida.</p>
+    <input id="accessInput" type="password" placeholder="Código de acceso" autocomplete="off">
+    <button id="accessSubmit">Continuar</button>
+  </div>
+
+  <!-- shown to a player the host removed -->
+  <div class="gate" id="blockedScreen" style="display:none;">
+    <h2>Fuiste removido de esta partida</h2>
+    <p>El anfitrión te quitó del juego. Si crees que fue un error, pídele que te deje entrar de nuevo.</p>
+  </div>
+
+  <!-- name gate -->
+  <div class="gate" id="gate" style="display:none;">
+    <h2>¿Cómo te llamas?</h2>
+    <p>Con tu nombre te asignamos un cartón único para esta partida.</p>
+    <input id="nameInput" type="text" maxlength="24" placeholder="Tu nombre" autocomplete="off">
+    <button id="nameSubmit">Entrar al juego</button>
+  </div>
+
+  <div class="host-drawer" id="hostDrawer">
+    <h3>Panel del anfitrión</h3>
+    <div id="hostLocked">
+      <label for="hostPassInput" style="display:block;font-size:0.8rem;font-weight:700;margin-bottom:6px;">Contraseña de anfitrión</label>
+      <input id="hostPassInput" type="password" placeholder="Contraseña" autocomplete="off" style="width:100%;padding:10px 12px;border-radius:8px;border:1.5px solid var(--line);margin-bottom:10px;font-family:'Inter',sans-serif;">
+      <button class="primary-btn" id="hostUnlockBtn">Entrar como anfitrión</button>
+    </div>
+    <div id="hostControls" style="display:none;">
+      <div class="host-row">
+        <select class="interval" id="intervalSelect">
+          <option value="5">Cantar cada 5 s</option>
+          <option value="8" selected>Cantar cada 8 s</option>
+          <option value="12">Cantar cada 12 s</option>
+        </select>
+      </div>
+      <div class="host-row">
+        <button class="go" id="startBtn">Iniciar</button>
+        <button class="stop" id="pauseBtn">Pausar</button>
+        <button class="reset" id="resetBtn">Reiniciar partida</button>
+      </div>
+      <div class="host-row">
+        <button class="reset" id="hardResetBtn" style="width:100%;">Nueva partida (jugadores nuevos)</button>
+      </div>
+      <div class="host-row">
+        <button id="lockHostBtn" style="flex:none;padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:0.75rem;cursor:pointer;">🔒 Bloquear panel de anfitrión en este navegador</button>
+      </div>
+      <div class="host-note"><strong>Reiniciar partida</strong>: borra los números cantados, pero cada persona conserva su mismo cartón (para jugar otra ronda con la misma gente). <strong>Nueva partida (jugadores nuevos)</strong>: además de borrar los números, hace que todos —incluido tú— tengan que volver a escribir su nombre y reciban un cartón nuevo. Úsalo cuando vayas a jugar en otra ocasión con gente distinta.</div>
+      <div class="host-note">Deja esta pestaña abierta mientras el juego está en curso: es la que va cantando los números por ti. Si dos personas abren el panel de anfitrión a la vez pueden cantarse números duplicados, así que lo mejor es que solo una persona lo controle. Reiniciar borra los números cantados pero cada jugador conserva su mismo cartón.</div>
+      <div class="host-note" id="hostFeedback"></div>
+
+      <h3 style="margin-top:18px;">Jugadores conectados</h3>
+      <div id="playersRoster"><div class="host-note">Nadie ha entrado todavía.</div></div>
+    </div>
+  </div>
+
+  <div id="game" style="display:none;">
+
+    <div class="status-card">
+      <div class="current-ball empty" id="currentBall"><span>—</span></div>
+      <div class="status-info">
+        <div class="status-line" id="statusLine">Esperando que el anfitrión inicie la partida…</div>
+        <div class="status-sub" id="statusSub">0 de 75 números cantados</div>
+        <div class="history" id="history"></div>
+      </div>
+    </div>
+
+    <div class="bingo-alert" id="bingoAlert" style="display:none;">
+      <div id="bingoAlertText"></div>
+      <button id="bingoAlertClose">Entendido, cerrar aviso</button>
+    </div>
+
+    <div class="card-panel">
+      <div class="card-panel-head">
+        <h2>Tu cartón</h2>
+        <div class="player-name" id="playerNameLabel"></div>
+      </div>
+      <table class="carton" id="cartonTable"></table>
+      <div class="win-banner" id="winBanner"></div>
+    </div>
+
+    <div class="winners-panel">
+      <h3>Ganadores</h3>
+      <div id="winnersList"><div class="empty">Nadie ha cantado línea o bingo todavía.</div></div>
+    </div>
+
+  </div>
+
+  <footer>100 talonarios virtuales · se marcan solos con cada número cantado</footer>
+</div>
+
+<script>
+const RANGES = { B:[1,15], I:[16,30], N:[31,45], G:[46,60], O:[61,75] };
+const COLS = ['B','I','N','G','O'];
+const POLL_FALLBACK_MS = 3000;
+
+// Contraseña para entrar al Panel del anfitrión — cámbiala antes de compartir el enlace.
+const HOST_PASSWORD = "fiesta2026";
+
+// Código que deben escribir los jugadores para poder entrar al juego — cámbialo antes de compartir el enlace.
+// Déjalo como "" (vacío) si no quieres pedir código de acceso.
+const ACCESS_CODE = "bingo2026";
+
+let myName = null;
+let myCard = null;
+let hostInterval = null;
+let claimedLines = new Set();
+let voiceOn = true;
+let announcedCount = null;
+let db = null;
+let firebaseReady = false;
+let myPlayerId = null;
+
+function getOrCreatePlayerId(){
+  let id = localStorage.getItem('bingo_player_id');
+  if(!id){
+    id = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('p' + Date.now() + Math.random().toString(36).slice(2));
+    localStorage.setItem('bingo_player_id', id);
+  }
+  return id;
+}
+
+/* ---------- Firebase config: baked in so every guest connects automatically ---------- */
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBALkP3nDjfB9xggAMMGnnf5n6INFYX8nc",
+  authDomain: "bingo-fiesta-f6ef6.firebaseapp.com",
+  databaseURL: "https://bingo-fiesta-f6ef6-default-rtdb.firebaseio.com",
+  projectId: "bingo-fiesta-f6ef6",
+  storageBucket: "bingo-fiesta-f6ef6.firebasestorage.app",
+  messagingSenderId: "944208258430",
+  appId: "1:944208258430:web:8a614c0b6d83b16437ff2f"
+};
+function getStoredConfig(){
+  try{
+    const stored = JSON.parse(localStorage.getItem('bingo_fb_config') || 'null');
+    return stored || DEFAULT_FIREBASE_CONFIG;
+  }catch(e){ return DEFAULT_FIREBASE_CONFIG; }
+}
+function saveConfig(cfg){
+  localStorage.setItem('bingo_fb_config', JSON.stringify(cfg));
+}
+
+function initFirebase(cfg){
+  try{
+    firebase.initializeApp(cfg);
+    db = firebase.database();
+    firebaseReady = true;
+    return true;
+  }catch(e){
+    showError('No se pudo conectar con la base de datos: ' + e.message);
+    return false;
+  }
+}
+
+function showError(msg){
+  const el = document.getElementById('errorBanner');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function clearError(){
+  document.getElementById('errorBanner').style.display = 'none';
+}
+
+/* ---------- Firebase read/write helpers ---------- */
+async function dbGet(path){
+  if(!firebaseReady) return null;
+  try{
+    const snap = await db.ref(path).get();
+    return snap.exists() ? snap.val() : null;
+  }catch(e){ showError('No se pudo leer el estado del juego: ' + e.message); return null; }
+}
+async function dbSet(path, value){
+  if(!firebaseReady) return false;
+  try{
+    await db.ref(path).set(value);
+    return true;
+  }catch(e){ showError('No se pudo guardar el estado del juego: ' + e.message); return false; }
+}
+
+// Wait for the voice list to finish loading before speaking anything —
+// Chrome cancels the very first utterance if it arrives while voices
+// are still being loaded internally.
+const voicesLoadedPromise = new Promise(resolve=>{
+  if(typeof window.speechSynthesis === 'undefined'){ resolve(); return; }
+  const v = window.speechSynthesis.getVoices();
+  if(v.length > 0){ resolve(); return; }
+  let done = false;
+  window.speechSynthesis.onvoiceschanged = ()=>{ if(!done){ done=true; resolve(); } };
+  setTimeout(()=>{ if(!done){ done=true; resolve(); } }, 1500);
+});
+
+function pickVoice(langPrefix){
+  const voices = window.speechSynthesis.getVoices();
+  const localMatch = voices.find(v=>v.lang.toLowerCase().startsWith(langPrefix) && v.localService);
+  if(localMatch) return localMatch;
+  const anyLocal = voices.find(v=>v.localService);
+  if(anyLocal) return anyLocal; // better a local voice in the wrong accent than a blocked network voice
+  const networkMatch = voices.find(v=>v.lang.toLowerCase().startsWith(langPrefix));
+  return networkMatch || null;
+}
+
+function speakOne(text, langPrefix, langTag, onerror, onend){
+  const u = new SpeechSynthesisUtterance(text);
+  const voice = pickVoice(langPrefix);
+  if(voice) u.voice = voice;
+  u.lang = langTag;
+  u.rate = 0.95;
+  if(onerror) u.onerror = onerror;
+  if(onend) u.onend = onend;
+  window.speechSynthesis.speak(u);
+}
+
+function speakNumber(num){
+  if(!voiceOn || typeof window.speechSynthesis === 'undefined') return;
+  voicesLoadedPromise.then(()=>{
+    const letter = letterFor(num);
+    speakOne(`${letter}, ${num}`, 'es', 'es-ES');
+    speakOne(`${letter}, ${num}`, 'fr', 'fr-FR');
+  });
+}
+
+function randomCardNumbers(min, max, count){
+  const pool = [];
+  for(let n=min; n<=max; n++) pool.push(n);
+  for(let i=pool.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [pool[i],pool[j]] = [pool[j],pool[i]];
+  }
+  return pool.slice(0,count).sort((a,b)=>a-b);
+}
+
+function generateCard(){
+  const card = {};
+  COLS.forEach(col=>{
+    const [min,max] = RANGES[col];
+    card[col] = randomCardNumbers(min,max, col==='N' ? 4 : 5);
+  });
+  return card;
+}
+
+function defaultState(sessionId){
+  const pool = [];
+  for(let n=1;n<=75;n++) pool.push(n);
+  return { status:'esperando', calledNumbers:[], pool, intervalSeconds:8, updatedAt:Date.now(), sessionId: sessionId || Date.now() };
+}
+
+function letterFor(n){
+  if(n<=15) return 'B';
+  if(n<=30) return 'I';
+  if(n<=45) return 'N';
+  if(n<=60) return 'G';
+  return 'O';
+}
+
+function renderCard(calledSet){
+  const table = document.getElementById('cartonTable');
+  let html = '<tr>' + COLS.map(c=>`<th>${c}</th>`).join('') + '</tr>';
+  for(let row=0; row<5; row++){
+    html += '<tr>';
+    COLS.forEach(col=>{
+      if(col==='N' && row===2){
+        html += `<td class="free marked">LIBRE</td>`;
+      } else {
+        const idx = col==='N' && row>2 ? row-1 : row;
+        const num = myCard[col][idx];
+        const marked = calledSet.has(num) ? 'marked' : '';
+        html += `<td class="${marked}" data-num="${num}">${num}</td>`;
+      }
+    });
+    html += '</tr>';
+  }
+  table.innerHTML = html;
+}
+
+function checkWins(calledSet){
+  const grid = [];
+  for(let row=0; row<5; row++){
+    const r = [];
+    COLS.forEach(col=>{
+      if(col==='N' && row===2){ r.push(true); return; }
+      const idx = col==='N' && row>2 ? row-1 : row;
+      r.push(calledSet.has(myCard[col][idx]));
+    });
+    grid.push(r);
+  }
+  const wins = [];
+  for(let row=0; row<5; row++){
+    if(grid[row].every(Boolean)) wins.push('línea horizontal ' + (row+1));
+  }
+  for(let c=0;c<5;c++){
+    if(grid.every(r=>r[c])) wins.push('línea vertical ' + COLS[c]);
+  }
+  if([0,1,2,3,4].every(i=>grid[i][i])) wins.push('diagonal');
+  if([0,1,2,3,4].every(i=>grid[i][4-i])) wins.push('diagonal');
+  const full = grid.every(r=>r.every(Boolean));
+  if(full) wins.push('cartón lleno');
+  return { anyLine: wins.some(w=>w!=='cartón lleno'), full, wins };
+}
+
+async function claimWin(type){
+  const key = myName + '::' + type;
+  if(claimedLines.has(key)) return;
+  claimedLines.add(key);
+  const winners = (await dbGet('juego/ganadores')) || [];
+  const already = winners.some(w=>w.nombre===myName && w.tipo===type);
+  if(already) return;
+  winners.push({ nombre:myName, tipo:type, hora:new Date().toLocaleTimeString('es', {hour:'2-digit',minute:'2-digit'}) });
+  await dbSet('juego/ganadores', winners);
+
+  if(type === 'cartón lleno'){
+    const state = await dbGet('juego/estado');
+    if(state && state.status === 'jugando'){
+      state.status = 'pausado';
+      state.pausedReason = { nombre: myName, tipo: type, ts: Date.now() };
+      await dbSet('juego/estado', state);
+    }
+  }
+}
+
+function renderWinners(winners){
+  const el = document.getElementById('winnersList');
+  if(!winners || winners.length===0){
+    el.innerHTML = '<div class="empty">Nadie ha cantado línea o bingo todavía.</div>';
+    return;
+  }
+  el.innerHTML = winners.slice().reverse().map(w=>
+    `<div class="winner-row"><span>${escapeHtml(w.nombre)} · ${w.hora}</span><span class="winner-tag">${escapeHtml(w.tipo)}</span></div>`
+  ).join('');
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderStatus(state){
+  const ball = document.getElementById('currentBall');
+  const called = state.calledNumbers || [];
+  const last = called[called.length-1];
+  if(last){
+    ball.classList.remove('empty');
+    ball.innerHTML = `<span>${last}<span class="letter">${letterFor(last)}</span></span>`;
+  } else {
+    ball.classList.add('empty');
+    ball.innerHTML = '<span>—</span>';
+  }
+  const statusLine = document.getElementById('statusLine');
+  const statusSub = document.getElementById('statusSub');
+  if(state.status==='esperando') statusLine.textContent = 'Esperando que el anfitrión inicie la partida…';
+  else if(state.status==='jugando') statusLine.textContent = 'Partida en curso — cantando números automáticamente';
+  else if(state.status==='pausado') statusLine.textContent = 'Partida en pausa';
+  else if(state.status==='terminado') statusLine.textContent = 'Se cantaron los 75 números — partida terminada';
+  statusSub.textContent = `${called.length} de 75 números cantados`;
+
+  const hist = document.getElementById('history');
+  hist.innerHTML = called.slice(-14).reverse().map(n=>`<div class="chip">${n}</div>`).join('');
+}
+
+let lastKnownStatus = null;
+let currentSessionId = null;
+let lastPausedReasonTs = null;
+
+function showBingoAlert(reason){
+  const el = document.getElementById('bingoAlert');
+  const label = reason.tipo === 'cartón lleno' ? 'BINGO (cartón lleno)' : 'línea';
+  document.getElementById('bingoAlertText').textContent =
+    `🎉 ¡${label}! ${reason.nombre} completó su cartón. La partida se pausó automáticamente.`;
+  el.style.display = 'block';
+
+  const soyAnfitrion = localStorage.getItem('bingo_host_unlocked') === '1';
+  if(soyAnfitrion && typeof window.speechSynthesis !== 'undefined'){
+    voicesLoadedPromise.then(()=>{
+      window.speechSynthesis.cancel();
+      speakOne(`Atención anfitrión. ${reason.nombre} completó el cartón entero. El bingo se pausó automáticamente.`, 'es', 'es-ES');
+    });
+  }
+}
+
+function handleState(state){
+  if(!state) return;
+
+  if(state.sessionId){
+    if(currentSessionId === null){
+      currentSessionId = state.sessionId;
+    } else if(currentSessionId !== state.sessionId){
+      currentSessionId = state.sessionId;
+      startNewSessionLocally();
+    }
+  }
+
+  renderStatus(state);
+  const calledSet = new Set(state.calledNumbers || []);
+  if(myCard) renderCard(calledSet);
+
+  if(lastKnownStatus === 'jugando' && state.status !== 'jugando'){
+    if(typeof window.speechSynthesis !== 'undefined') window.speechSynthesis.cancel();
+  }
+  lastKnownStatus = state.status;
+
+  if(state.pausedReason && state.pausedReason.ts !== lastPausedReasonTs){
+    lastPausedReasonTs = state.pausedReason.ts;
+    showBingoAlert(state.pausedReason);
+  }
+
+  const called = state.calledNumbers || [];
+  if(announcedCount === null){
+    announcedCount = called.length;
+  } else if(called.length > announcedCount && state.status === 'jugando'){
+    for(let i=announcedCount; i<called.length; i++) speakNumber(called[i]);
+    announcedCount = called.length;
+  } else if(called.length > announcedCount){
+    announcedCount = called.length; // caught up silently if not currently playing
+  }
+
+  if(myCard){
+    const result = checkWins(calledSet);
+    const banner = document.getElementById('winBanner');
+    if(result.full){
+      banner.textContent = '¡BINGO! Completaste el cartón entero 🎉';
+      banner.classList.add('show');
+      claimWin('cartón lleno');
+    } else if(result.anyLine){
+      banner.textContent = '¡Línea! Ya tienes una fila, columna o diagonal completa';
+      banner.classList.add('show');
+      claimWin('línea');
+    } else {
+      banner.classList.remove('show');
+    }
+  }
+}
+
+function handleWinners(winners){
+  renderWinners(winners || []);
+}
+
+function startListeners(){
+  db.ref('juego/estado').on('value', snap=>{
+    handleState(snap.exists() ? snap.val() : null);
+  });
+  db.ref('juego/ganadores').on('value', snap=>{
+    handleWinners(snap.exists() ? snap.val() : []);
+  });
+  db.ref('juego/jugadores').on('value', snap=>{
+    renderRoster(snap.exists() ? snap.val() : {});
+  });
+}
+
+async function boot(){
+  const cfg = getStoredConfig();
+  if(!cfg){
+    document.getElementById('setupPanel').style.display = 'block';
+    return;
+  }
+  if(!initFirebase(cfg)) return;
+  clearError();
+
+  myPlayerId = getOrCreatePlayerId();
+
+  let state = await dbGet('juego/estado');
+  if(!state){
+    state = defaultState();
+    await dbSet('juego/estado', state);
+  }
+  currentSessionId = state.sessionId; // set before listeners start, so the first live snapshot isn't treated as a "new session"
+
+  const storedSessionId = localStorage.getItem('bingo_session_id');
+  if(state.sessionId && String(state.sessionId) !== storedSessionId){
+    localStorage.removeItem('bingo_nombre');
+    localStorage.removeItem('bingo_carton');
+    localStorage.setItem('bingo_session_id', String(state.sessionId));
+  }
+
+  // Was this player already removed by the host?
+  const alreadyBlocked = await dbGet('juego/bloqueados/' + myPlayerId);
+  if(alreadyBlocked){
+    document.getElementById('blockedScreen').style.display = 'block';
+    return;
+  }
+
+  startListeners();
+  listenForKick();
+
+  // Access code check (skipped entirely if ACCESS_CODE is empty)
+  if(ACCESS_CODE && localStorage.getItem('bingo_access_ok') !== '1'){
+    document.getElementById('accessGate').style.display = 'block';
+    return;
+  }
+
+  myName = localStorage.getItem('bingo_nombre');
+  const cardRaw = localStorage.getItem('bingo_carton');
+  myCard = cardRaw ? JSON.parse(cardRaw) : null;
+
+  if(myName && myCard){
+    showGame();
+    registerPlayer();
+  } else {
+    document.getElementById('gate').style.display = 'block';
+  }
+
+  if(localStorage.getItem('bingo_hosting')==='1' && state.status==='jugando'){
+    document.getElementById('hostDrawer').classList.add('open');
+    unlockHostPanel();
+    document.getElementById('intervalSelect').value = String(state.intervalSeconds || 8);
+    if(hostInterval) clearInterval(hostInterval);
+    hostInterval = setInterval(drawNumber, (state.intervalSeconds || 8)*1000);
+    document.getElementById('hostFeedback').textContent = 'Retomando el sorteo automático en esta pestaña.';
+  }
+}
+
+function registerPlayer(){
+  if(!myPlayerId || !myName) return;
+  dbSet('juego/jugadores/' + myPlayerId, { nombre: myName, ts: Date.now() });
+}
+
+function listenForKick(){
+  if(!db || !myPlayerId) return;
+  db.ref('juego/bloqueados/' + myPlayerId).on('value', snap=>{
+    if(snap.exists() && snap.val()){
+      if(hostInterval){ clearInterval(hostInterval); hostInterval = null; }
+      if(typeof window.speechSynthesis !== 'undefined') window.speechSynthesis.cancel();
+      document.getElementById('game').style.display = 'none';
+      document.getElementById('gate').style.display = 'none';
+      document.getElementById('accessGate').style.display = 'none';
+      document.getElementById('hostDrawer').classList.remove('open');
+      document.getElementById('blockedScreen').style.display = 'block';
+    }
+  });
+}
+
+function renderRoster(players){
+  const el = document.getElementById('playersRoster');
+  const entries = Object.entries(players || {});
+  if(entries.length === 0){
+    el.innerHTML = '<div class="host-note">Nadie ha entrado todavía.</div>';
+    return;
+  }
+  el.innerHTML = entries
+    .sort((a,b)=> (a[1].ts||0) - (b[1].ts||0))
+    .map(([id, p])=>
+      `<div class="roster-row"><span>${escapeHtml(p.nombre||'(sin nombre)')}</span><button class="kick-btn" data-id="${id}">Expulsar</button></div>`
+    ).join('');
+  el.querySelectorAll('.kick-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> kickPlayer(btn.dataset.id));
+  });
+}
+
+async function kickPlayer(playerId){
+  await dbSet('juego/bloqueados/' + playerId, true);
+  await dbSet('juego/jugadores/' + playerId, null);
+}
+
+function startNewSessionLocally(){
+  localStorage.removeItem('bingo_nombre');
+  localStorage.removeItem('bingo_carton');
+  localStorage.setItem('bingo_session_id', String(currentSessionId));
+  myName = null;
+  myCard = null;
+  announcedCount = null;
+  claimedLines.clear();
+  document.getElementById('game').style.display = 'none';
+  document.getElementById('gate').style.display = 'block';
+  document.getElementById('nameInput').value = '';
+}
+
+function unlockHostPanel(){
+  localStorage.setItem('bingo_host_unlocked', '1');
+  document.getElementById('hostLocked').style.display = 'none';
+  document.getElementById('hostControls').style.display = 'block';
+}
+
+function showGame(){
+  document.getElementById('gate').style.display = 'none';
+  document.getElementById('game').style.display = 'block';
+  document.getElementById('playerNameLabel').textContent = myName;
+}
+
+async function submitName(){
+  const val = document.getElementById('nameInput').value.trim();
+  if(!val) return;
+  myName = val;
+  myCard = generateCard();
+  localStorage.setItem('bingo_nombre', myName);
+  localStorage.setItem('bingo_carton', JSON.stringify(myCard));
+  if(currentSessionId) localStorage.setItem('bingo_session_id', String(currentSessionId));
+  showGame();
+  registerPlayer();
+}
+
+async function startHost(){
+  clearError();
+  document.getElementById('hostFeedback').textContent = 'Iniciando…';
+  let state = (await dbGet('juego/estado')) || defaultState();
+  state.status = 'jugando';
+  state.pausedReason = null;
+  state.intervalSeconds = parseInt(document.getElementById('intervalSelect').value, 10);
+  await dbSet('juego/estado', state);
+  localStorage.setItem('bingo_hosting', '1');
+  if(hostInterval) clearInterval(hostInterval);
+  hostInterval = setInterval(drawNumber, state.intervalSeconds*1000);
+  document.getElementById('bingoAlert').style.display = 'none';
+  document.getElementById('hostFeedback').textContent = 'Partida en curso, cantando cada ' + state.intervalSeconds + ' s.';
+}
+
+async function pauseHost(){
+  clearError();
+  if(hostInterval){ clearInterval(hostInterval); hostInterval = null; }
+  if(typeof window.speechSynthesis !== 'undefined') window.speechSynthesis.cancel();
+  localStorage.removeItem('bingo_hosting');
+  let state = await dbGet('juego/estado');
+  if(state && state.status==='jugando'){
+    state.status = 'pausado';
+    await dbSet('juego/estado', state);
+  }
+  document.getElementById('hostFeedback').textContent = 'Partida en pausa.';
+}
+
+async function resetGame(){
+  clearError();
+  if(hostInterval){ clearInterval(hostInterval); hostInterval = null; }
+  if(typeof window.speechSynthesis !== 'undefined') window.speechSynthesis.cancel();
+  localStorage.removeItem('bingo_hosting');
+  const current = await dbGet('juego/estado');
+  const fresh = defaultState(current ? current.sessionId : undefined); // keep same session → same cards
+  await dbSet('juego/estado', fresh);
+  await dbSet('juego/ganadores', []);
+  claimedLines.clear();
+  document.getElementById('hostFeedback').textContent = 'Partida reiniciada (mismos jugadores).';
+}
+
+async function hardResetGame(){
+  clearError();
+  if(hostInterval){ clearInterval(hostInterval); hostInterval = null; }
+  if(typeof window.speechSynthesis !== 'undefined') window.speechSynthesis.cancel();
+  localStorage.removeItem('bingo_hosting');
+  const fresh = defaultState(Date.now()); // new session → forces everyone to re-enter and get a new card
+  await dbSet('juego/estado', fresh);
+  await dbSet('juego/ganadores', []);
+  claimedLines.clear();
+  document.getElementById('hostFeedback').textContent = 'Nueva partida iniciada: todos van a tener que volver a escribir su nombre.';
+}
+
+async function drawNumber(){
+  let state = await dbGet('juego/estado');
+  if(!state || state.status!=='jugando'){
+    if(hostInterval){ clearInterval(hostInterval); hostInterval = null; }
+    return;
+  }
+  state.calledNumbers = state.calledNumbers || [];
+  state.pool = state.pool || [];
+  if(state.pool.length===0){
+    state.status = 'terminado';
+    await dbSet('juego/estado', state);
+    if(hostInterval){ clearInterval(hostInterval); hostInterval = null; }
+    return;
+  }
+  const idx = Math.floor(Math.random()*state.pool.length);
+  const num = state.pool[idx];
+  state.pool.splice(idx,1);
+  state.calledNumbers.push(num);
+  state.updatedAt = Date.now();
+  await dbSet('juego/estado', state);
+}
+
+document.getElementById('accessSubmit').addEventListener('click', ()=>{
+  const val = document.getElementById('accessInput').value;
+  if(val === ACCESS_CODE){
+    localStorage.setItem('bingo_access_ok', '1');
+    document.getElementById('accessGate').style.display = 'none';
+    myName = localStorage.getItem('bingo_nombre');
+    const cardRaw = localStorage.getItem('bingo_carton');
+    myCard = cardRaw ? JSON.parse(cardRaw) : null;
+    if(myName && myCard){
+      showGame();
+      registerPlayer();
+    } else {
+      document.getElementById('gate').style.display = 'block';
+    }
+  } else {
+    showError('Código de acceso incorrecto.');
+  }
+});
+document.getElementById('accessInput').addEventListener('keydown', e=>{
+  if(e.key==='Enter') document.getElementById('accessSubmit').click();
+});
+
+document.getElementById('nameSubmit').addEventListener('click', submitName);
+document.getElementById('nameInput').addEventListener('keydown', e=>{ if(e.key==='Enter') submitName(); });
+
+document.getElementById('hostToggleBtn').addEventListener('click', ()=>{
+  document.getElementById('hostDrawer').classList.toggle('open');
+  if(localStorage.getItem('bingo_host_unlocked')==='1') unlockHostPanel();
+});
+document.getElementById('hostUnlockBtn').addEventListener('click', ()=>{
+  clearError();
+  const val = document.getElementById('hostPassInput').value;
+  if(val === HOST_PASSWORD){
+    unlockHostPanel();
+  } else {
+    showError('Contraseña de anfitrión incorrecta.');
+  }
+});
+document.getElementById('hostPassInput').addEventListener('keydown', e=>{
+  if(e.key==='Enter') document.getElementById('hostUnlockBtn').click();
+});
+document.getElementById('voiceToggleBtn').addEventListener('click', ()=>{
+  voiceOn = !voiceOn;
+  document.getElementById('voiceToggleBtn').textContent = voiceOn ? '🔊 Voz activada' : '🔇 Voz desactivada';
+  if(!voiceOn && typeof window.speechSynthesis !== 'undefined') window.speechSynthesis.cancel();
+});
+document.getElementById('setupToggleBtn').addEventListener('click', ()=>{
+  const p = document.getElementById('setupPanel');
+  p.style.display = p.style.display==='block' ? 'none' : 'block';
+});
+document.getElementById('startBtn').addEventListener('click', startHost);
+document.getElementById('pauseBtn').addEventListener('click', pauseHost);
+document.getElementById('resetBtn').addEventListener('click', resetGame);
+document.getElementById('hardResetBtn').addEventListener('click', hardResetGame);
+document.getElementById('bingoAlertClose').addEventListener('click', ()=>{
+  document.getElementById('bingoAlert').style.display = 'none';
+});
+document.getElementById('lockHostBtn').addEventListener('click', ()=>{
+  localStorage.removeItem('bingo_host_unlocked');
+  document.getElementById('hostControls').style.display = 'none';
+  document.getElementById('hostLocked').style.display = 'block';
+  document.getElementById('hostPassInput').value = '';
+});
+document.getElementById('saveConfigBtn').addEventListener('click', ()=>{
+  const cfg = {
+    apiKey: document.getElementById('cfgApiKey').value.trim(),
+    authDomain: document.getElementById('cfgAuthDomain').value.trim(),
+    databaseURL: document.getElementById('cfgDbUrl').value.trim(),
+    projectId: document.getElementById('cfgProjectId').value.trim(),
+    appId: document.getElementById('cfgAppId').value.trim()
+  };
+  if(!cfg.apiKey || !cfg.databaseURL || !cfg.projectId){
+    showError('Faltan datos: revisa que apiKey, databaseURL y projectId estén completos.');
+    return;
+  }
+  saveConfig(cfg);
+  document.getElementById('setupPanel').style.display = 'none';
+  boot();
+});
+
+document.getElementById('voiceTestLocalBtn').addEventListener('click', ()=>{
+  clearError();
+  voicesLoadedPromise.then(()=>{
+    const voices = window.speechSynthesis.getVoices();
+    const local = voices.find(v=>v.localService);
+    if(!local){
+      showError('Tu computadora no tiene NINGUNA voz local instalada — todas son de red. Por eso nunca va a sonar si la red bloquea las voces de Google.');
+      return;
+    }
+    const u = new SpeechSynthesisUtterance('Prueba de voz local');
+    u.voice = local;
+    u.lang = local.lang;
+    u.onerror = (ev)=> showError('Incluso la voz local falló: ' + ev.error + ' (voz: ' + local.name + ')');
+    u.onend = ()=> { document.getElementById('hostFeedback').textContent = 'Voz local reproducida sin errores (' + local.name + ').'; };
+    window.speechSynthesis.speak(u);
+  });
+});
+
+document.getElementById('voiceTestBtn').addEventListener('click', ()=>{
+  clearError();
+  if(typeof window.speechSynthesis === 'undefined'){
+    showError('Este navegador no tiene voz sintética disponible.');
+    return;
+  }
+  document.getElementById('hostFeedback').textContent = 'Preparando la voz…';
+  voicesLoadedPromise.then(()=>{
+    const voices = window.speechSynthesis.getVoices();
+    if(voices.length === 0){
+      showError('Tu navegador no tiene ninguna voz instalada (0 voces detectadas). Por eso no suena, aunque no dé error.');
+      return;
+    }
+    const voice = pickVoice('es');
+    const voiceLabel = voice ? (voice.name + (voice.localService ? ' [local]' : ' [red]')) : 'ninguna encontrada para es, usando la voz por defecto';
+    speakOne('B, trece', 'es', 'es-ES',
+      (ev)=> showError('La voz dio error al hablar: ' + ev.error + ' (voz usada: ' + voiceLabel + ')'),
+      ()=> { document.getElementById('hostFeedback').textContent = 'Voz reproducida sin errores (voz usada: ' + voiceLabel + ').'; }
+    );
+  });
+});
+
+window.addEventListener('error', e=>{
+  showError('Ocurrió un error inesperado: ' + e.message);
+});
+window.addEventListener('unhandledrejection', e=>{
+  showError('Ocurrió un error inesperado: ' + (e.reason && e.reason.message ? e.reason.message : e.reason));
+});
+
+boot();
+</script>
+</body>
+</html>

@@ -214,7 +214,6 @@
       <button class="host-toggle" id="voiceToggleBtn">🔊 Voz activada</button>
       <button class="host-toggle" id="voiceTestBtn">Probar voz</button>
       <button class="host-toggle" id="hostToggleBtn">Panel del anfitrión</button>
-      <button class="host-toggle" id="setupToggleBtn">⚙ Configuración</button>
   <button class="host-toggle" id="voiceTestLocalBtn">Probar voz local</button>
     </div>
   </header>
@@ -285,6 +284,7 @@
       </div>
       <div class="host-row">
         <button id="lockHostBtn" style="flex:none;padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:0.75rem;cursor:pointer;">🔒 Bloquear panel de anfitrión en este navegador</button>
+        <button id="openSetupBtn" style="flex:none;padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:0.75rem;cursor:pointer;">⚙ Configuración de la base de datos</button>
       </div>
       <div class="host-note"><strong>Reiniciar partida</strong>: borra los números cantados, pero cada persona conserva su mismo cartón (para jugar otra ronda con la misma gente). <strong>Nueva partida (jugadores nuevos)</strong>: además de borrar los números, hace que todos —incluido tú— tengan que volver a escribir su nombre y reciban un cartón nuevo. Úsalo cuando vayas a jugar en otra ocasión con gente distinta.</div>
       <div class="host-note">Deja esta pestaña abierta mientras el juego está en curso: es la que va cantando los números por ti. Si dos personas abren el panel de anfitrión a la vez pueden cantarse números duplicados, así que lo mejor es que solo una persona lo controle. Reiniciar borra los números cantados pero cada jugador conserva su mismo cartón.</div>
@@ -292,6 +292,9 @@
 
       <h3 style="margin-top:18px;">Jugadores conectados</h3>
       <div id="playersRoster"><div class="host-note">Nadie ha entrado todavía.</div></div>
+
+      <h3 style="margin-top:18px;">Jugadores bloqueados</h3>
+      <div id="blockedRoster"><div class="host-note">Nadie está bloqueado.</div></div>
     </div>
   </div>
 
@@ -625,6 +628,7 @@ let currentSessionId = null;
 let lastPausedReasonTs = null;
 let exclusiveWinner = null;
 let exclusiveLineWinner = null;
+let isHostUnlocked = false;
 
 function showBingoAlert(reason){
   const el = document.getElementById('bingoAlert');
@@ -633,8 +637,7 @@ function showBingoAlert(reason){
     `🎉 ¡${label}! ${reason.nombre} completó su cartón. La partida se pausó automáticamente.`;
   el.style.display = 'block';
 
-  const soyAnfitrion = localStorage.getItem('bingo_host_unlocked') === '1';
-  if(soyAnfitrion && typeof window.speechSynthesis !== 'undefined'){
+  if(isHostUnlocked && typeof window.speechSynthesis !== 'undefined'){
     voicesLoadedPromise.then(()=>{
       window.speechSynthesis.cancel();
       speakOne(`Atención anfitrión. ${reason.nombre} completó el cartón entero. El bingo se pausó automáticamente.`, 'es', 'es-ES');
@@ -729,6 +732,9 @@ function startListeners(){
   db.ref('juego/ganadorLinea').on('value', snap=>{
     exclusiveLineWinner = snap.exists() ? snap.val() : null;
   });
+  db.ref('juego/bloqueados').on('value', snap=>{
+    renderBlockedRoster(snap.exists() ? snap.val() : {});
+  });
 }
 
 async function boot(){
@@ -784,12 +790,9 @@ async function boot(){
   }
 
   if(localStorage.getItem('bingo_hosting')==='1' && state.status==='jugando'){
-    document.getElementById('hostDrawer').classList.add('open');
-    unlockHostPanel();
     document.getElementById('intervalSelect').value = String(state.intervalSeconds || 8);
     if(hostInterval) clearInterval(hostInterval);
     hostInterval = setInterval(drawNumber, (state.intervalSeconds || 8)*1000);
-    document.getElementById('hostFeedback').textContent = 'Retomando el sorteo automático en esta pestaña.';
   }
 }
 
@@ -798,10 +801,14 @@ function registerPlayer(){
   dbSet('juego/jugadores/' + myPlayerId, { nombre: myName, ts: Date.now() });
 }
 
+let wasBlocked = false;
+
 function listenForKick(){
   if(!db || !myPlayerId) return;
   db.ref('juego/bloqueados/' + myPlayerId).on('value', snap=>{
-    if(snap.exists() && snap.val()){
+    const blocked = snap.exists() && snap.val();
+    if(blocked){
+      wasBlocked = true;
       if(hostInterval){ clearInterval(hostInterval); hostInterval = null; }
       if(typeof window.speechSynthesis !== 'undefined') window.speechSynthesis.cancel();
       document.getElementById('game').style.display = 'none';
@@ -809,6 +816,23 @@ function listenForKick(){
       document.getElementById('accessGate').style.display = 'none';
       document.getElementById('hostDrawer').classList.remove('open');
       document.getElementById('blockedScreen').style.display = 'block';
+    } else if(wasBlocked){
+      // The host readmitted this player — let them back into the game.
+      wasBlocked = false;
+      document.getElementById('blockedScreen').style.display = 'none';
+      if(ACCESS_CODE && localStorage.getItem('bingo_access_ok') !== '1'){
+        document.getElementById('accessGate').style.display = 'block';
+        return;
+      }
+      myName = localStorage.getItem('bingo_nombre');
+      const cardRaw = localStorage.getItem('bingo_carton');
+      myCard = cardRaw ? JSON.parse(cardRaw) : null;
+      if(myName && myCard){
+        showGame();
+        registerPlayer();
+      } else {
+        document.getElementById('gate').style.display = 'block';
+      }
     }
   });
 }
@@ -830,9 +854,31 @@ function renderRoster(players){
   });
 }
 
+function renderBlockedRoster(blocked){
+  const el = document.getElementById('blockedRoster');
+  const entries = Object.entries(blocked || {});
+  if(entries.length === 0){
+    el.innerHTML = '<div class="host-note">Nadie está bloqueado.</div>';
+    return;
+  }
+  el.innerHTML = entries
+    .map(([id, p])=>
+      `<div class="roster-row"><span>${escapeHtml((p && p.nombre) || '(desconocido)')}</span><button class="kick-btn" style="background:var(--green);" data-id="${id}">Permitir de nuevo</button></div>`
+    ).join('');
+  el.querySelectorAll('.kick-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> unblockPlayer(btn.dataset.id));
+  });
+}
+
 async function kickPlayer(playerId){
-  await dbSet('juego/bloqueados/' + playerId, true);
+  const roster = await dbGet('juego/jugadores');
+  const nombre = (roster && roster[playerId] && roster[playerId].nombre) || '(desconocido)';
+  await dbSet('juego/bloqueados/' + playerId, { nombre, ts: Date.now() });
   await dbSet('juego/jugadores/' + playerId, null);
+}
+
+async function unblockPlayer(playerId){
+  await dbSet('juego/bloqueados/' + playerId, null);
 }
 
 function startNewSessionLocally(){
@@ -849,7 +895,7 @@ function startNewSessionLocally(){
 }
 
 function unlockHostPanel(){
-  localStorage.setItem('bingo_host_unlocked', '1');
+  isHostUnlocked = true;
   document.getElementById('hostLocked').style.display = 'none';
   document.getElementById('hostControls').style.display = 'block';
 }
@@ -926,6 +972,8 @@ async function hardResetGame(){
   await dbSet('juego/ganadores', []);
   await dbSet('juego/ganadorUnico', null);
   await dbSet('juego/ganadorLinea', null);
+  await dbSet('juego/bloqueados', null); // clear the blocklist too — a new game starts with nobody blocked
+  await dbSet('juego/jugadores', null);
   claimedLines.clear();
   announcedCount = 0;
   document.getElementById('hostFeedback').textContent = 'Nueva partida iniciada: todos van a tener que volver a escribir su nombre.';
@@ -980,7 +1028,7 @@ document.getElementById('nameInput').addEventListener('keydown', e=>{ if(e.key==
 
 document.getElementById('hostToggleBtn').addEventListener('click', ()=>{
   document.getElementById('hostDrawer').classList.toggle('open');
-  if(localStorage.getItem('bingo_host_unlocked')==='1') unlockHostPanel();
+  if(isHostUnlocked) unlockHostPanel();
 });
 document.getElementById('hostUnlockBtn').addEventListener('click', ()=>{
   clearError();
@@ -1011,10 +1059,14 @@ document.getElementById('bingoAlertClose').addEventListener('click', ()=>{
   document.getElementById('bingoAlert').style.display = 'none';
 });
 document.getElementById('lockHostBtn').addEventListener('click', ()=>{
-  localStorage.removeItem('bingo_host_unlocked');
+  isHostUnlocked = false;
   document.getElementById('hostControls').style.display = 'none';
   document.getElementById('hostLocked').style.display = 'block';
   document.getElementById('hostPassInput').value = '';
+});
+document.getElementById('openSetupBtn').addEventListener('click', ()=>{
+  const p = document.getElementById('setupPanel');
+  p.style.display = p.style.display==='block' ? 'none' : 'block';
 });
 document.getElementById('saveConfigBtn').addEventListener('click', ()=>{
   const cfg = {

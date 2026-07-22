@@ -538,10 +538,34 @@ function checkWins(calledSet){
   return { anyLine: wins.some(w=>w!=='cartón lleno'), full, wins };
 }
 
+async function claimExclusiveSlot(dbPath){
+  try{
+    const result = await db.ref(dbPath).transaction(current=>{
+      if(current === null || current === undefined){
+        return { nombre: myName, ts: Date.now() };
+      }
+      return; // abort — someone already claimed it first
+    });
+    return result.committed;
+  }catch(e){
+    showError('No se pudo confirmar el ganador: ' + e.message);
+    return false;
+  }
+}
+
 async function claimWin(type){
   const key = myName + '::' + type;
   if(claimedLines.has(key)) return;
   claimedLines.add(key);
+
+  if(type === 'cartón lleno'){
+    const won = await claimExclusiveSlot('juego/ganadorUnico');
+    if(!won) return; // another player already completed their card first
+  } else if(type === 'línea'){
+    const won = await claimExclusiveSlot('juego/ganadorLinea');
+    if(!won) return; // another player already got a line first
+  }
+
   const winners = (await dbGet('juego/ganadores')) || [];
   const already = winners.some(w=>w.nombre===myName && w.tipo===type);
   if(already) return;
@@ -599,6 +623,8 @@ function renderStatus(state){
 let lastKnownStatus = null;
 let currentSessionId = null;
 let lastPausedReasonTs = null;
+let exclusiveWinner = null;
+let exclusiveLineWinner = null;
 
 function showBingoAlert(reason){
   const el = document.getElementById('bingoAlert');
@@ -645,6 +671,10 @@ function handleState(state){
   const called = state.calledNumbers || [];
   if(announcedCount === null){
     announcedCount = called.length;
+  } else if(called.length < announcedCount){
+    // The list got shorter than what we'd already announced — a reset/new game happened.
+    // Resync to the new baseline so future numbers get spoken correctly.
+    announcedCount = called.length;
   } else if(called.length > announcedCount && state.status === 'jugando'){
     for(let i=announcedCount; i<called.length; i++) speakNumber(called[i]);
     announcedCount = called.length;
@@ -656,13 +686,23 @@ function handleState(state){
     const result = checkWins(calledSet);
     const banner = document.getElementById('winBanner');
     if(result.full){
-      banner.textContent = '¡BINGO! Completaste el cartón entero 🎉';
-      banner.classList.add('show');
-      claimWin('cartón lleno');
+      if(exclusiveWinner && exclusiveWinner.nombre !== myName){
+        banner.textContent = `Completaste el cartón, pero ${exclusiveWinner.nombre} ya había cantado BINGO primero.`;
+        banner.classList.add('show');
+      } else {
+        banner.textContent = '¡BINGO! Completaste el cartón entero 🎉';
+        banner.classList.add('show');
+        claimWin('cartón lleno');
+      }
     } else if(result.anyLine){
-      banner.textContent = '¡Línea! Ya tienes una fila, columna o diagonal completa';
-      banner.classList.add('show');
-      claimWin('línea');
+      if(exclusiveLineWinner && exclusiveLineWinner.nombre !== myName){
+        banner.textContent = `Hiciste línea, pero ${exclusiveLineWinner.nombre} ya la había cantado primero.`;
+        banner.classList.add('show');
+      } else {
+        banner.textContent = '¡Línea! Ya tienes una fila, columna o diagonal completa';
+        banner.classList.add('show');
+        claimWin('línea');
+      }
     } else {
       banner.classList.remove('show');
     }
@@ -682,6 +722,12 @@ function startListeners(){
   });
   db.ref('juego/jugadores').on('value', snap=>{
     renderRoster(snap.exists() ? snap.val() : {});
+  });
+  db.ref('juego/ganadorUnico').on('value', snap=>{
+    exclusiveWinner = snap.exists() ? snap.val() : null;
+  });
+  db.ref('juego/ganadorLinea').on('value', snap=>{
+    exclusiveLineWinner = snap.exists() ? snap.val() : null;
   });
 }
 
@@ -863,7 +909,10 @@ async function resetGame(){
   const fresh = defaultState(current ? current.sessionId : undefined); // keep same session → same cards
   await dbSet('juego/estado', fresh);
   await dbSet('juego/ganadores', []);
+  await dbSet('juego/ganadorUnico', null);
+  await dbSet('juego/ganadorLinea', null);
   claimedLines.clear();
+  announcedCount = 0;
   document.getElementById('hostFeedback').textContent = 'Partida reiniciada (mismos jugadores).';
 }
 
@@ -875,7 +924,10 @@ async function hardResetGame(){
   const fresh = defaultState(Date.now()); // new session → forces everyone to re-enter and get a new card
   await dbSet('juego/estado', fresh);
   await dbSet('juego/ganadores', []);
+  await dbSet('juego/ganadorUnico', null);
+  await dbSet('juego/ganadorLinea', null);
   claimedLines.clear();
+  announcedCount = 0;
   document.getElementById('hostFeedback').textContent = 'Nueva partida iniciada: todos van a tener que volver a escribir su nombre.';
 }
 

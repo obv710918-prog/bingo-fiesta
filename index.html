@@ -762,15 +762,18 @@ async function boot(){
     localStorage.setItem('bingo_session_id', String(state.sessionId));
   }
 
+  // Start listening BEFORE checking blocked status, so this browser keeps
+  // receiving updates (like being unblocked, or a full game reset) even
+  // while it's currently blocked — no manual reload needed to recover.
+  startListeners();
+  listenForKick();
+
   // Was this player already removed by the host?
   const alreadyBlocked = await dbGet('juego/bloqueados/' + myPlayerId);
   if(alreadyBlocked){
     document.getElementById('blockedScreen').style.display = 'block';
     return;
   }
-
-  startListeners();
-  listenForKick();
 
   // Access code check (skipped entirely if ACCESS_CODE is empty)
   if(ACCESS_CODE && localStorage.getItem('bingo_access_ok') !== '1'){

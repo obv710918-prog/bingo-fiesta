@@ -1047,10 +1047,6 @@ document.getElementById('voiceToggleBtn').addEventListener('click', ()=>{
   document.getElementById('voiceToggleBtn').textContent = voiceOn ? '🔊 Voz activada' : '🔇 Voz desactivada';
   if(!voiceOn && typeof window.speechSynthesis !== 'undefined') window.speechSynthesis.cancel();
 });
-document.getElementById('setupToggleBtn').addEventListener('click', ()=>{
-  const p = document.getElementById('setupPanel');
-  p.style.display = p.style.display==='block' ? 'none' : 'block';
-});
 document.getElementById('startBtn').addEventListener('click', startHost);
 document.getElementById('pauseBtn').addEventListener('click', pauseHost);
 document.getElementById('resetBtn').addEventListener('click', resetGame);
